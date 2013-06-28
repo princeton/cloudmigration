@@ -1,6 +1,10 @@
 /**
+ * Copyright © 2013 - Trustees of Princeton University
+ * 
+ * @author Mark Ratliff
  * 
  */
+
 package edu.princeton.cloudmigration;
 
 import java.io.File;
@@ -23,6 +27,8 @@ public class BoxFTPUploader {
 	//Logger for logging messages to a file
 	private static Logger logger = Logger.getLogger(BoxFTPUploader.class);
 	
+	private static String config_file_name = "boxcom";
+	
 	private static final String boxuser;
 	private static final String boxpasswd;
 	private static final String uploadtargetFolder;
@@ -33,7 +39,7 @@ public class BoxFTPUploader {
 	// Load configuration values
 	static 
 	{	
-		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.CONFIG_FILE_NAME);
+		ResourceBundle rb = ResourceBundle.getBundle(config_file_name);
 		
 		boxuser = rb.getString("boxuser");
 		boxpasswd = rb.getString("boxpasswd");

@@ -1,6 +1,10 @@
 /**
+ * Copyright © 2013 - Trustees of Princeton University
+ * 
+ * @author Mark Ratliff
  * 
  */
+
 package edu.princeton.cloudmigration;
 
 import java.io.File;
@@ -14,9 +18,11 @@ import java.sql.SQLException;
 import java.util.ResourceBundle;
 
 import org.apache.log4j.Logger;
+import org.apache.commons.io.FileUtils;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
+import com.google.api.client.googleapis.media.MediaHttpUploader;
 import com.google.api.client.http.FileContent;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -26,6 +32,7 @@ import com.google.api.services.drive.Drive;
 //import com.google.api.services.drive.Drive.Files.List;
 import com.google.api.services.drive.model.FileList;
 import com.google.api.services.drive.model.ParentReference;
+import com.google.api.services.drive.model.About;
 
 
 /**
@@ -34,8 +41,12 @@ import com.google.api.services.drive.model.ParentReference;
  */
 public class GoogleDriveUploader {
 	
+	//private static java.util.logging.Logger logger = Logger.getLogger(GoogleDriveUploader.class);
 	private static Logger logger = Logger.getLogger(GoogleDriveUploader.class);
 	
+	private static String config_file_name = "googledrive";
+	
+	private static final String gdrive_applicationname;
 	private static final String gdrive_clientid;
 	private static final String gdrive_clientsecret;
 	private String accessToken;
@@ -51,12 +62,13 @@ public class GoogleDriveUploader {
 	// Load configuration values
 	static 
 	{	
-		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.CONFIG_FILE_NAME);
+		ResourceBundle rb = ResourceBundle.getBundle(config_file_name);
 		
+		gdrive_applicationname = rb.getString("gdrive_applicationname");
 		gdrive_clientid = rb.getString("gdrive_clientid");
 		gdrive_clientsecret = rb.getString("gdrive_clientsecret");
 		MAX_FILE_SIZE = Integer.parseInt(rb.getString("maxfilesize"));
-		retries = Integer.parseInt(rb.getString("boxretries"));
+		retries = Integer.parseInt(rb.getString("googleretries"));
 	}
 	
 	/**
@@ -82,7 +94,7 @@ public class GoogleDriveUploader {
 	 * @param targetdir_id
 	 * @throws SQLException
 	 */
-	public void restUploadFiles(File folder2upload, String targetdir_id) throws SQLException
+	public void restUploadFiles(File folder2upload, String targetdir_id) throws SQLException, GoogleQuotaException
 	{
 		logger.info("Uploading folder "+folder2upload.getAbsolutePath()+" to Google Drive ...");
 		
@@ -106,10 +118,30 @@ public class GoogleDriveUploader {
 	    logger.debug("Access token expires in: "+credential.getExpiresInSeconds()+" seconds.");
 	    
 	    //Create a new authorized API client
-	    Drive service = new Drive.Builder(httpTransport, jsonFactory, credential).build();
+	    Drive service = new Drive.Builder(httpTransport, jsonFactory, credential).setApplicationName("WebSpaceMigration").build();
 	    
 		try
 		{
+			// Find amount of Google Drive storage available
+		    About about = service.about().get().execute();
+		    Long quota = about.getQuotaBytesTotal();
+		    logger.info("Quata for netID is: "+quota+" bytes");
+		    Long quota_used = about.getQuotaBytesUsedAggregate();
+		    logger.info("Quota used is: "+quota_used+" bytes");
+		    long quota_unused = quota.longValue() - quota_used.longValue();
+		    logger.info("Quota available is: "+quota_unused+" bytes");
+
+		    // Find size of folder to upload
+		    long dirsize = FileUtils.sizeOfDirectory(folder2upload);
+		    logger.info("Size of directory to upload is: "+dirsize+" bytes");
+		    
+		    // If there is not enough space in Google Drive, print error message and throw an exception
+		    if (quota_unused < dirsize)
+		    {
+		    	logger.error("Not enough available quota in Google Drive to upload data");
+		    	throw new GoogleQuotaException();
+		    }
+		    
 // Test upload of an invidivual file
 //java.io.File problemfile = new java.io.File("/Users/ratliff/tmp/yaya/ratliff/Testing Folder/Report/Testing.xapp/Page 2.xapp/Page 2 level 2.xapp/wiki.css");
 //restUpload(problemfile, "0B_mg3zK26fS3T2pxeEVlM0Fiak0", service);		
@@ -120,11 +152,13 @@ public class GoogleDriveUploader {
 		{
 			logger.error("Error while uploading to Google.", gjre);
 			logger.error(gjre.getDetails());
+			logger.fatal("Aborting upload!");
 			System.exit(-1);
 		}
 		catch (IOException ioe)
 		{
 			logger.error("Error while uploading to Google.", ioe);
+			logger.fatal("Aborting upload!");
 			System.exit(-1);
 		}
 
@@ -153,8 +187,15 @@ public class GoogleDriveUploader {
 		// If this is a directory, then create the directory and then call this method again for each folder/file within this directory
 		if (src.isDirectory())
 		{
-			String dirname = utils.getFilename(src, folder2upload);
+			String dirname = utils.getFilename(src, this.folder2upload);
 			//String dirname = src.getName();
+			
+			// If the directory is the Xythos "trash" folder, don't upload it
+			if (src.getAbsolutePath().equals(this.folder2upload.getAbsolutePath()+"/trash"))
+			{
+				logger.debug("Not uploading trash folder: "+src.getAbsolutePath());
+				return;
+			}
 
 		    // Create a folder
 			com.google.api.services.drive.model.File folder = new com.google.api.services.drive.model.File();
@@ -203,6 +244,7 @@ public class GoogleDriveUploader {
 					
 					if (retrynum > this.retries)
 					{
+						logger.error("Number of retries exceeded.  Giving up!");
 						throw gjre;
 					}
 					
@@ -263,12 +305,24 @@ public class GoogleDriveUploader {
 		    while (retrynum <= this.retries)
 		    {
 		    	logger.debug("Uploading file: "+filename);
+		    	logger.debug("   File length: "+mediaContent.getLength());
 				logger.debug("   Parent folder id: "+parent_folder_id);
 				logger.debug("   Attempt number: "+(retrynum+1));
 				
 		    	try
 		    	{
-		    		com.google.api.services.drive.model.File file = service.files().insert(body, mediaContent).execute();
+		    		// The File.Insert.execute() method uses resumable upload by default
+		    		//com.google.api.services.drive.model.File file = service.files().insert(body, mediaContent).execute();
+		    	
+		    		// There is some sort of problem with the use of GZip with resumable upload!!
+		    		// Use direct upload rather than resumable
+		    		Drive.Files.Insert insert = service.files().insert(body, mediaContent);
+		    		MediaHttpUploader uploader = insert.getMediaHttpUploader();
+		    		//uploader.setDirectUploadEnabled(true);
+		    		uploader.setDisableGZipContent(true);
+		    		uploader.setBackOffPolicyEnabled(true);
+		    		com.google.api.services.drive.model.File file = insert.execute();
+		    		
 		    		break;
 		    	}
 		    	//catch (GoogleJsonResponseException gjre)
@@ -290,6 +344,7 @@ public class GoogleDriveUploader {
 					
 					if (retrynum > this.retries)
 					{
+						logger.error("Number of retries exceeded.  Giving up!");
 						throw gjre;
 					}
 					

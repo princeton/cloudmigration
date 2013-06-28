@@ -1,32 +1,38 @@
-package edu.princeton.cloudmigration;
-
 /**
- * Application for migrating data in user's WebSpace home folders into Google Drive or Box.com home folders
+ * Copyright © 2013 - Trustees of Princeton University
  * 
- * @author Mark Ratliff -- Princeton University
+ * @author Mark Ratliff
  * 
  */
 
+package edu.princeton.cloudmigration;
+
 import java.io.File;
-
-import java.util.*;
-
-import java.sql.*;
+import java.util.ResourceBundle;
+import java.util.ArrayList;
+import java.sql.ResultSet;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.sql.SQLException;
 
 import org.apache.log4j.Logger;
 
+/**
+ *  
+ * This application can be used for migrating data in user's Xythos home folders into Google Drive or Box.com home folders
+ * 
+ */
 public class DataMigrator implements Runnable {
 
-	public static final String CONFIG_FILE_NAME = "MigrateWebSpaceData";
+	public static final String config_file_name = "datamigrator";
 	
 	//  Logger for logging messages to a file
 	private static Logger logger = Logger.getLogger(DataMigrator.class);
 
+	private static final String cloudprovider;
 	private static final String uploadMethod;
 
 	private static final int numthreads;
-
-	private static final String boxtargetdirid;
 
 	private String netID;
 	private String zipFileName;
@@ -35,12 +41,11 @@ public class DataMigrator implements Runnable {
 	// Load configuration values
 	static 
 	{	
-		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.CONFIG_FILE_NAME);
-
-		boxtargetdirid = rb.getString("boxtargetdirid");
+		ResourceBundle rb = ResourceBundle.getBundle(config_file_name);
 		
-		numthreads = Integer.parseInt(rb.getString("numthreads"));
 		uploadMethod = rb.getString("uploadMethod");
+		cloudprovider = rb.getString("cloudprovider");
+		numthreads = Integer.parseInt(rb.getString("numthreads"));	
 	}
 
 
@@ -58,6 +63,10 @@ public class DataMigrator implements Runnable {
 
 		// Get the list of accounts that are to be migrated
 		String[] netidlist = DataMigrator.getAccountsToMigrate();
+		
+//Testing
+//String[] netidlist = {"jingfu"};
+
 		logger.info("Migrating "+netidlist.length+" accounts");
 
 		// Migrate accounts in the list
@@ -89,34 +98,85 @@ public class DataMigrator implements Runnable {
 	public void run()
 	{
 		logger.info("Begin migration for netID: "+this.netID);
-		
-		// Download data from source system (Xythos in this case)
-		XythosDownloader xd = new XythosDownloader(this.netID);
-		
-		//File unzippedfolder = xd.download();
-		File unzippedfolder = new File("/Users/ratliff/tmp/yaya/ratliff");
+	
+		File folder2upload = null;
 
+//Testing
+//folder2upload = new File("/Users/ratliff/tmp/WebSpace_Data/ratliff_2013-03-23-191458");	
+//folder2upload = new File("/Users/ratliff/tmp/WebSpace_Data/non-iso-latin-chars/");	
+		folder2upload = new File("/Users/ratliff/tmp/WebSpace_Data/cmok_2013-06-27-134304");
+		
+		/*
+		try
+		{
+			// Download data from source system (Xythos in this case)
+			XythosDownloader xd = new XythosDownloader(this.netID);
 
-		// Upload data to target system using specified protocol
-		if (uploadMethod.equals("FTP"))
-		{
-			BoxFTPUploader uploader = new BoxFTPUploader(this.netID);
-			
-			uploader.ftpUploadFiles(unzippedfolder);
+			folder2upload = xd.download();
 		}
-		else if (uploadMethod.equals("REST"))
+		catch (NoSuchXythosUserException nsxu)
 		{
-			BoxRESTUploader uploader = new BoxRESTUploader();
+			logger.error("User ["+this.netID+"] cannot be found in Xythos!");
+			logger.error("Aborting migration!");
+			//TODO:  record status in database
 			
-			uploader.restUploadFiles(unzippedfolder, boxtargetdirid);
+			return;
 		}
-		else if (uploadMethod.equals("GDRIVE"))
+		catch (XythosMaxSizeException xfmse)
+		{
+			logger.error("Xythos folder is too large to download!");
+			logger.error("Aborting migration!");
+			//TODO:  record status in database
+			
+			return;
+		}
+		catch (SQLException sqle)
+		{
+			logger.error("Unable to retrieve user information from Xythos database!", sqle);
+			logger.error("Aborting migration!");
+			//TODO:  record status in database
+			
+			return;
+		}
+*/
+//System.exit(0);
+		
+		// If target is Box.com
+		if (cloudprovider.equals("Box.com"))
+		{
+			if (uploadMethod.equals("FTP"))
+			{
+				BoxFTPUploader uploader = new BoxFTPUploader(this.netID);
+
+				uploader.ftpUploadFiles(folder2upload);
+			}
+			else if (uploadMethod.equals("REST"))
+			{
+				BoxRESTUploader uploader = new BoxRESTUploader();
+
+				uploader.restUploadFiles(folder2upload);
+			}
+			else
+			{
+				logger.fatal("uploadMethod must be set to either FTP or REST!");
+				logger.fatal("Aborting!!");
+				System.exit(-1);
+			}
+		}
+		
+		// If target is Google Drive
+		else if (cloudprovider.equals("GoogleDrive"))
 		{
 			try 
 			{
-				GoogleDriveUploader uploader = new GoogleDriveUploader(this.netID);
+				//GoogleDriveUploader uploader = new GoogleDriveUploader(this.netID);
+				GoogleDriveUploader uploader = new GoogleDriveUploader("csgsun8");
 
-				uploader.restUploadFiles(unzippedfolder, null);
+				uploader.restUploadFiles(folder2upload, null);
+			}
+			catch (GoogleQuotaException gqe)
+			{
+				logger.error("Not enough free space in Google Drive!");
 			}
 			catch (SQLException sqle)
 			{
@@ -125,13 +185,12 @@ public class DataMigrator implements Runnable {
 		}
 		else
 		{
-			logger.fatal("uploadMethod must be set to either REST or FTP!");
+			logger.fatal("cloudprovider must be set to either Box.com or GoogleDrive!");
 			logger.fatal("Aborting!!");
 			System.exit(-1);
 		}
 
-
-		//recordStatus();
+		recordStatus();
 
 		logger.info("Finished migration for netID: "+this.netID);
 	}
@@ -146,10 +205,6 @@ public class DataMigrator implements Runnable {
 		Connection dbconn = null;
 		ArrayList<String> netid_list = new ArrayList<String>();
 		String[] netid_array = {};
-
-		// For testing
-		//String[] netid_array = {"ratliff"};
-
 		
 		try
 		{

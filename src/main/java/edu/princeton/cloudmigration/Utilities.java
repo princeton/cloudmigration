@@ -1,6 +1,10 @@
 /**
+ * Copyright © 2013 - Trustees of Princeton University
+ * 
+ * @author Mark Ratliff
  * 
  */
+
 package edu.princeton.cloudmigration;
 
 import java.io.File;
@@ -43,7 +47,7 @@ public class Utilities {
 	// Load configuration values
 	static 
 	{	
-		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.CONFIG_FILE_NAME);
+		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.config_file_name);
 		
 		dbserver = rb.getString("dbserver");
 		dbname = rb.getString("dbname");

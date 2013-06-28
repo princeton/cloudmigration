@@ -1,3 +1,10 @@
+/**
+ * Copyright © 2013 - Trustees of Princeton University
+ * 
+ * @author Mark Ratliff
+ * 
+ */
+
 package edu.princeton.cloudmigration;
 
 import java.io.File;
@@ -10,6 +17,11 @@ import java.net.URLEncoder;
 import javax.net.ssl.HttpsURLConnection;
 import java.util.Enumeration;
 import java.util.ResourceBundle;
+import java.sql.DriverManager;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipEntry;
@@ -21,10 +33,18 @@ public class XythosDownloader {
 //  Logger for logging messages to a file
 	private static Logger logger = Logger.getLogger(XythosDownloader.class);
 	
+	private static String config_file_name = "xythos";
+	
 	private static final String webspaceServerName;
 	private static final String zipFolder;
 	private static final String unZipFolder;
 	private static final String webspacebasicauthcreds;
+	private static final long max_folder_size;
+	private static final String xy_db_server;
+	private static final String xy_db_port;
+	private static final String xy_db_sid;
+	private static final String xy_db_user;
+	private static final String xy_db_passwd;
 	
 	private String netID;
 	private String zipFileName;
@@ -32,12 +52,18 @@ public class XythosDownloader {
 	// Load configuration values
 	static 
 	{	
-		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.CONFIG_FILE_NAME);
+		ResourceBundle rb = ResourceBundle.getBundle(config_file_name);
 
 		webspaceServerName = rb.getString("webspaceServerName");
 		zipFolder = rb.getString("zipFolder");
 		unZipFolder = rb.getString("unZipFolder");
 		webspacebasicauthcreds = rb.getString("webspacebasicauthcreds");
+		xy_db_server = rb.getString("xy_db_server");
+		xy_db_port = rb.getString("xy_db_port");
+		xy_db_sid = rb.getString("xy_db_sid");
+		xy_db_user = rb.getString("xy_db_user");
+		xy_db_passwd = rb.getString("xy_db_passwd");
+		max_folder_size = Long.parseLong(rb.getString("max_folder_size"));
 	}
 		
 
@@ -59,12 +85,29 @@ public class XythosDownloader {
 	 * 
 	 * @returns Folder containing the downloaded data
 	 */
-	public File download()
+	public File download() throws NoSuchXythosUserException, XythosMaxSizeException, SQLException
 	{
 		//TODO:  What if user account doesn't even exist in WebSpace?
+		if (! userExists(netID))
+		{
+			throw new NoSuchXythosUserException();
+		}
 		
+		// Check size of user's home folder
+		long folder_size = getFolderSize(netID);
+		
+		if (folder_size > max_folder_size)
+		{
+			throw new XythosMaxSizeException();	
+		}
+		
+		// Download the user's home folder as a ZIP file
 		getZip();
+		
+		// Unzip the ZIP file
 		unZip();
+		
+		// Append today's date to the foldername
 		File unzippedfolder = renameUnzippedFolder();
 		
 		return unzippedfolder;
@@ -251,6 +294,85 @@ public class XythosDownloader {
 		return newfile;
 	}
 	
+	private long getFolderSize(String netid) throws SQLException
+	{
+		Connection xy_conn = null;
+		long foldersize = 0;
+		
+		try
+		{
+			 xy_conn = getXythosDBConnection();
+
+			Statement stmt = xy_conn.createStatement();
+
+			String sql = "select file_size from xyf_files where file_id = "+
+			"(select file_id from xyf_urls where full_path = '/users/"+netid+"')";
+
+			ResultSet rs = stmt.executeQuery(sql);
+
+			rs.next();
+			foldersize = rs.getLong(1);
+			
+			stmt.close();
+		}
+		finally
+		{
+			if (xy_conn != null) xy_conn.close();
+		}
+		
+		return foldersize;
+	}
 	
+	private boolean userExists(String netid) throws SQLException
+	{
+		boolean userfound = false;
+
+		Connection xy_conn =  null;
+
+		try
+		{
+			xy_conn = getXythosDBConnection();
+
+			Statement stmt = xy_conn.createStatement();
+
+			String sql = "select * from xyf_urls where full_path = '/users/"+netid+"'";
+
+			ResultSet rs = stmt.executeQuery(sql);
+
+			if (rs.next())
+			{
+				userfound = true;
+			}
+
+			stmt.close();
+		}
+		finally
+		{
+			xy_conn.close();
+		}
+
+		return userfound;
+	}
+	
+	private Connection getXythosDBConnection() throws SQLException
+	{
+
+		try
+		{
+			Class.forName("oracle.jdbc.OracleDriver").newInstance();
+		}
+		catch (Exception e)
+		{
+			logger.error("Unable to load JDBC driver!", e);
+			
+			throw new SQLException("Unable to load JDBC driver!");
+		}
+		
+		Connection xy_conn =
+			DriverManager.getConnection("jdbc:oracle:thin:@"+xy_db_server+":"+xy_db_port+":"+xy_db_sid,
+					xy_db_user, xy_db_passwd);
+
+		return xy_conn;
+	}
 }
 

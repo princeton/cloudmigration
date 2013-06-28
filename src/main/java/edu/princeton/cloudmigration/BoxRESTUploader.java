@@ -1,6 +1,10 @@
 /**
+ * Copyright © 2013 - Trustees of Princeton University
+ * 
+ * @author Mark Ratliff
  * 
  */
+
 package edu.princeton.cloudmigration;
 
 import java.io.File;
@@ -28,8 +32,11 @@ public class BoxRESTUploader {
 	
 	private static Logger logger = Logger.getLogger(BoxRESTUploader.class);
 	
+	private static String config_file_name = "boxcom";
+	
 	private static final String box_auth_token;
 	private static final String box_api_key;
+	private static final String boxtargetdirid;
 	private static final int boxretries;
 	private static final int MAX_FILE_SIZE;
 	
@@ -40,10 +47,11 @@ public class BoxRESTUploader {
 	// Load configuration values
 	static 
 	{	
-		ResourceBundle rb = ResourceBundle.getBundle(DataMigrator.CONFIG_FILE_NAME);
+		ResourceBundle rb = ResourceBundle.getBundle(config_file_name);
 
 		box_api_key = rb.getString("boxapikey");
 		box_auth_token = rb.getString("boxauthtoken");
+		boxtargetdirid = rb.getString("boxtargetdirid");
 		boxretries = Integer.parseInt(rb.getString("boxretries"));
 		MAX_FILE_SIZE = Integer.parseInt(rb.getString("maxfilesize"));
 	}
@@ -53,7 +61,7 @@ public class BoxRESTUploader {
 		this.utils = new Utilities();
 	}
 	
-	public void restUploadFiles(File folder2upload, String boxtargetdir_id)
+	public void restUploadFiles(File folder2upload)
 	{
 		logger.info("Uploading folder "+folder2upload.getAbsolutePath()+" to Box.com via REST ...");
 		
@@ -64,7 +72,7 @@ public class BoxRESTUploader {
 
 		try
 		{
-			restUpload(folder2upload, boxtargetdir_id, iBoxExternalAPI);
+			restUpload(folder2upload, boxtargetdirid, iBoxExternalAPI);
 		}
 		catch (BoxException be)
 		{

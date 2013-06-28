@@ -38,7 +38,7 @@
   <!-- Libraries on which the application dependends -->
   <dependencies>
     
-    <!-- JUnit for testing -->
+<!-- JUnit for testing -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
@@ -46,11 +46,12 @@
       <scope>test</scope>
     </dependency>
     
-    <!-- Google SDK's -->
+<!-- Google SDK's -->
     <dependency>
       <groupId>com.google.apis</groupId>
       <artifactId>google-api-services-drive</artifactId>
-      <version>v2-rev60-1.13.2-beta</version>
+      <version>v2-rev80-1.15.0-rc</version>
+      <!-- version>v2-rev60-1.13.2-beta</version -->
     </dependency>
     
     <dependency>
@@ -73,12 +74,12 @@
       <version>1.4.0</version>
     </dependency>
     
-    <!-- Libraries on which box4j depends -->
-         <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-            <version>1.2.17</version>
-         </dependency>
+<!-- Libraries on which box4j depends -->
+    <dependency>
+       <groupId>log4j</groupId>
+       <artifactId>log4j</artifactId>
+       <version>1.2.17</version>
+    </dependency>
     
     <dependency>
       <groupId>commons-io</groupId>
@@ -103,9 +104,22 @@
       <artifactId>dom4j</artifactId>
       <version>1.6.1</version>
     </dependency>
+
+<!-- MySQL JDBC library -->
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>5.1.24</version>
+    </dependency>
     
-  </dependencies>
+<!-- Oracle JDBC library -->
+    <dependency>
+      <groupId>com.oracle</groupId>
+      <artifactId>ojdbc14</artifactId>
+      <version>10.2.0.2.0</version>
+    </dependency>
   
+  </dependencies>
   
   <build>
     <plugins>
